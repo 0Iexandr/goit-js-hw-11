@@ -20,14 +20,19 @@ async function handleSubmit(event) {
   let {
     elements: { searchQuery },
   } = event.currentTarget;
-  searchParam = searchQuery.value.replaceAll(' ', '+');
-  const data = await fetchPictures(searchParam, pageNumber);
-  if (data.totalHits) {
-    Notiflix.Notify.success(`Hooray! We found ${data.totalHits} images.`);
+  
+  try {
+    searchParam = searchQuery.value.replaceAll(' ', '+');
+    const data = await fetchPictures(searchParam, pageNumber);
+    if (data.totalHits) {
+      Notiflix.Notify.success(`Hooray! We found ${data.totalHits} images.`);
+    }
+    const rendered = await renderGallery(data.hits, pageNumber);
+    gallery.innerHTML = rendered.join('');
+    lightbox = new SimpleLightbox('.gallery .gallery-div a');
+  } catch (error) {
+    console.log(error);
   }
-  const rendered = await renderGallery(data.hits, pageNumber);
-  gallery.innerHTML = rendered.join('');
-  lightbox = new SimpleLightbox('.gallery .gallery-div a');
 }
 
 async function loadMore() {
