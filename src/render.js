@@ -1,4 +1,4 @@
-export function renderGallery(array, pageNumber) {
+export function renderGallery(array) {
   return array.map(
     img =>
       `<div class="gallery-div">

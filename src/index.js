@@ -1,50 +1,100 @@
+import { PixabayAPI } from './fetch';
+import { renderGallery } from './render';
+import Notiflix from 'notiflix';
 import SimpleLightbox from 'simplelightbox';
 import 'simplelightbox/dist/simple-lightbox.min.css';
-import Notiflix from 'notiflix';
-import { renderGallery } from './render';
-import { fetchPictures } from './fetch';
 
-const form = document.querySelector('#search-form');
+const searchForm = document.querySelector('#search-form');
 const gallery = document.querySelector('.gallery');
-let pageNumber;
-let searchParam;
-let lightbox;
 
-form.addEventListener('submit', handleSubmit);
-gallery.addEventListener('scroll', scrollEnd);
+const pixabayAPI = new PixabayAPI();
+const options = {
+  root: null,
+  rootMargin: '100px',
+  threshold: 1.0,
+};
+const simpleLightbox = new SimpleLightbox('.gallery .gallery-div a');
 
-async function handleSubmit(event) {
-  pageNumber = 1;
-  gallery.addEventListener('scroll', scrollEnd);
-  event.preventDefault();
-  let {
-    elements: { searchQuery },
-  } = event.currentTarget;
-  
-  try {
-    searchParam = searchQuery.value.replaceAll(' ', '+');
-    const data = await fetchPictures(searchParam, pageNumber);
-    if (data.totalHits) {
-      Notiflix.Notify.success(`Hooray! We found ${data.totalHits} images.`);
+searchForm.addEventListener('submit', onSearchFormSubmit);
+
+const loadMorePhotos = function (entries, observer) {
+  entries.forEach(async entry => {
+    if (entry.isIntersecting) {
+      observer.unobserve(entry.target);
+      pixabayAPI.incrementPage();
+      try {
+        const data = await pixabayAPI.fetchPhotos();
+        if (data.totalHits === 0) {
+          return;
+        }
+        gallery.insertAdjacentHTML('beforeend', renderGallery(data.hits));
+        smoothScroll();
+        simpleLightbox.refresh();
+        const haveMorePages = pixabayAPI.morePagesExists();
+        if (haveMorePages) {
+          const item = document.querySelector('.gallery-div:last-child');
+          observer.observe(item);
+        } else {
+          Notiflix.Notify.info(
+            `We're sorry, but you've reached the end of search results.`
+          );
+        }
+      } catch (error) {
+        return Notiflix.Notify.warning(error.message);
+      }
     }
-    const rendered = await renderGallery(data.hits, pageNumber);
-    gallery.innerHTML = rendered.join('');
-    lightbox = new SimpleLightbox('.gallery .gallery-div a');
+  });
+};
+
+const io = new IntersectionObserver(loadMorePhotos, options);
+
+async function onSearchFormSubmit(event) {
+  event.preventDefault();
+
+  const {
+    elements: { searchQuery },
+  } = event.target;
+  const searchValue = searchQuery.value.trim();
+
+  pixabayAPI.resetPage();
+  gallery.innerHTML = '';
+  pixabayAPI.searchQuery = searchValue;
+
+  if (!searchValue) {
+    return Notiflix.Notify.info('Enter text in the searching field!');
+  }
+
+  try {
+    const data = await pixabayAPI.fetchPhotos();
+
+    if (data.totalHits === 0) {
+      return Notiflix.Notify.failure(
+        'Sorry, there are no images matching your search query. Please try again.'
+      );
+    }
+    gallery.innerHTML = renderGallery(data.hits);
+    Notiflix.Notify.success(`Hooray! We found ${data.totalHits} images.`);
+    simpleLightbox.refresh();
+
+    pixabayAPI.setTotal(data.totalHits);
+    const haveMorePages = pixabayAPI.morePagesExists();
+    if (haveMorePages) {
+      const item = document.querySelector('.gallery-div:last-child');
+      io.observe(item);
+    }
   } catch (error) {
-    console.log(error);
+    return Notiflix.Notify.warning(error.message);
   }
+  event.target.reset();
 }
 
-async function loadMore() {
-  pageNumber += 1;
-  const data = await fetchPictures(searchParam, pageNumber);
-  const rendered = await renderGallery(data.hits, pageNumber);
-  gallery.innerHTML += rendered.join('');
-  lightbox.refresh();
-}
+function smoothScroll() {
+  const { height: cardHeight } = document
+    .querySelector('.gallery')
+    .firstElementChild.getBoundingClientRect();
 
-export function scrollEnd() {
-  if (gallery.scrollTop + gallery.clientHeight >= gallery.scrollHeight - 10) {
-    loadMore();
-  }
+  window.scrollBy({
+    top: cardHeight * 2,
+    behavior: 'smooth',
+  });
 }
